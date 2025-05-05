@@ -103,9 +103,25 @@ public class MCPProvider {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { continue }
             MCPLogger.logInfo("Received request: \(trimmed)")
-            if let response = service.processRequest(trimmed) {
-                MCPLogger.logInfo("Sending response: \(response)")
-                channel.writeLine(response)
+            do {
+                if let response = try service.processRequest(trimmed) {
+                    MCPLogger.logInfo("Sending response: \(response)")
+                    channel.writeLine(response)
+                }
+            } catch {
+                let errorMsg = "Error processing request: \(error)"
+                MCPLogger.logError(errorMsg)
+                let errorResponse = [
+                    "jsonrpc": "2.0",
+                    "error": [
+                        "code": -32000,
+                        "message": error.localizedDescription
+                    ]
+                ] as [String : Any]
+                if let errorData = try? JSONSerialization.data(withJSONObject: errorResponse),
+                   let errorString = String(data: errorData, encoding: .utf8) {
+                    channel.writeLine(errorString)
+                }
             }
         }
     }
