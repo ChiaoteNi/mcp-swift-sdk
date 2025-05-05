@@ -124,7 +124,7 @@ We welcome contributions from the community! If you would like to help improve t
 ### How to Contribute
 
 - **Report Issues:**  
-  If you encounter bugs, unexpected behavior, or have feature requests, please [open an issue](https://github.com/your-org/swift-sdk/issues) with a clear description and, if possible, steps to reproduce.
+  If you encounter bugs, unexpected behavior, or have feature requests, please [open an issue](https://github.com/ChiaoteNi/mcp-swift-sdk/issues) with a clear description and, if possible, steps to reproduce.
 
 - **Submit Pull Requests:**  
   1. Fork this repository and create a new branch for your feature or bugfix.
@@ -154,7 +154,7 @@ We welcome contributions from the community! If you would like to help improve t
 ### Communication
 
 - For major changes or design discussions, please open an issue to discuss your ideas before starting work.
-- For questions, you may also contact the maintainers via [email](mailto:maintainer@email.com).
+- For questions, you may also contact the maintainers via [email](aaron.chiao.19@gmail.com).
 
 ### License
 
@@ -166,4 +166,4 @@ MIT License
 
 ## Contact
 
-For questions, open an issue or contact [maintainer@email.com](mailto:maintainer@email.com)
+For questions, open an issue or contact [aaron.chiao.19@gmail.com](aaron.chiao.19@gmail.com)
