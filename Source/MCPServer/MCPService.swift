@@ -21,7 +21,7 @@ public typealias EmbeddedResource = MCPCore.EmbeddedResource
 // Protocol defining the service API methods
 public protocol MCPServiceProtocol {
     func registerTool(_ tool: MCPTool)
-    func processRequest(_ jsonString: String) -> String?
+    func processRequest(_ jsonString: String) throws -> String?
     func getServerInfo() -> JSONRPC.ServerInfo
 }
 
@@ -67,60 +67,54 @@ public class MCPService: MCPServiceProtocol {
         )
     }
     
-    public func processRequest(_ jsonString: String) -> String? {
-        // Log raw incoming JSON
+    // 新增 MCPServiceError 定義
+    public enum MCPServiceError: Error {
+        case parseError(String)
+        case decodeError(String)
+        case methodNotFound(String)
+        case invalidParams
+        case toolNotFound(String)
+    }
+    
+    public func processRequest(_ jsonString: String) throws -> String? {
         MCPLogger.logInfo("processRequest raw JSON: \(jsonString)")
-        do {
-            guard let jsonData = jsonString.data(using: .utf8) else {
-                MCPLogger.logError("Failed to convert string to data")
-                return createErrorResponse(code: -32700, message: "Parse error", id: nil)
-            }
-            
-            // First try to parse as a normal JSON dictionary, check if there is an id field
-            let decoder = JSONDecoder()
-            if let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
-                let method = json["method"] as? String ?? ""
-                
-                // Check if it is a notification (no id field)
-                if json["id"] == nil {
-                    MCPLogger.logInfo("Received notification: \(method)")
-                    
-                    // Handle initialization notification
-                    if method == "notifications/initialized" {
-                        MCPLogger.logInfo("Client initialization complete")
-                        return nil  // Notification does not need a response
-                    }
-                    
-                    // Handle other notifications...
+        guard let jsonData = jsonString.data(using: .utf8) else {
+            throw MCPServiceError.parseError("Failed to convert string to data")
+        }
+        let decoder = JSONDecoder()
+        if let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+            let method = json["method"] as? String ?? ""
+            if json["id"] == nil {
+                MCPLogger.logInfo("Received notification: \(method)")
+                if method == "notifications/initialized" {
+                    MCPLogger.logInfo("Client initialization complete")
                     return nil
                 }
+                return nil
             }
-            
-            // Try to parse as a request
-            let request = try decoder.decode(JSONRPC.Request.self, from: jsonData)
-            MCPLogger.logInfo("Decoded RPC request: method=\(request.method), id=\(request.id)")
-            
-            // Handle request method
-            switch request.method {
-                case "initialize":
-                    MCPLogger.logInfo("Invoking initialize handler (id=\(request.id))")
-                    return handleInitialize(request: request)
-                case "list_tools", "tools/list":  // Support two formats
-                    MCPLogger.logInfo("Invoking list tools handler (id=\(request.id))")
-                    return handleListTools(request: request)
-                case "tools/call":
-                    MCPLogger.logInfo("Invoking tool call handler (id=\(request.id))")
-                    return handleToolCall(request: request)
-                case "exit":
-                    MCPLogger.logInfo("Received exit request")
-                    return createJsonRpcResponse(result: ["status": "ok"], id: request.id)
-                default:
-                    MCPLogger.logError("Method not found: \(request.method)")
-                    return createErrorResponse(code: -32601, message: "Method not found", id: request.id)
-            }
+        }
+        let request: JSONRPC.Request
+        do {
+            request = try decoder.decode(JSONRPC.Request.self, from: jsonData)
         } catch {
-            MCPLogger.logError("Failed to parse JSON-RPC request: \(error)")
-            return createErrorResponse(code: -32700, message: "Parse error", id: nil)
+            throw MCPServiceError.decodeError("Failed to decode JSON-RPC request: \(error)")
+        }
+        MCPLogger.logInfo("Decoded RPC request: method=\(request.method), id=\(request.id)")
+        switch request.method {
+            case "initialize":
+                MCPLogger.logInfo("Invoking initialize handler (id=\(request.id))")
+                return handleInitialize(request: request)
+            case "list_tools", "tools/list":
+                MCPLogger.logInfo("Invoking list tools handler (id=\(request.id))")
+                return handleListTools(request: request)
+            case "tools/call":
+                MCPLogger.logInfo("Invoking tool call handler (id=\(request.id))")
+                return try handleToolCall(request: request)
+            case "exit":
+                MCPLogger.logInfo("Received exit request")
+                return createJsonRpcResponse(result: ["status": "ok"], id: request.id)
+            default:
+                throw MCPServiceError.methodNotFound(request.method)
         }
     }
     
@@ -217,42 +211,26 @@ public class MCPService: MCPServiceProtocol {
         return createJsonRpcResponse(result: ["tools": toolsArray], id: request.id)
     }
     
-    private func handleToolCall(request: JSONRPC.Request) -> String {
+    private func handleToolCall(request: JSONRPC.Request) throws -> String {
         MCPLogger.logInfo("Handling tool call request")
-        
-        // Extract tool name and arguments
         guard let params = request.params?.value as? [String: Any],
               let toolName = params["name"] as? String,
               let arguments = params["arguments"] as? [String: Any] else {
-            return createErrorResponse(code: -32602, message: "Invalid params", id: request.id)
+            throw MCPServiceError.invalidParams
         }
-        
-        // Find the tool
         guard let tool = tools[toolName] else {
-            return createErrorResponse(code: -32602, message: "Tool not found: \(toolName)", id: request.id)
+            throw MCPServiceError.toolNotFound(toolName)
         }
-        
-        // Call the tool handler if available
         if let handler = tool.handler {
-            // Handle tool call, no try-catch because handler will not throw
             let toolResult = handler(arguments)
-            
-            // Convert ToolResult to dictionary
             let resultDict = toolResult.toDictionary()
-            
             return createJsonRpcResponse(result: resultDict, id: request.id)
         } else {
-            // Return a default response for tools without handlers
             let errorText = "Tool handler not implemented for: \(toolName)"
             MCPLogger.logWarning(errorText)
-            
             let defaultContent = TextContent(text: errorText)
             let defaultResult = ToolResult(content: [defaultContent])
-            
-            return createJsonRpcResponse(
-                result: defaultResult.toDictionary(),
-                id: request.id
-            )
+            return createJsonRpcResponse(result: defaultResult.toDictionary(), id: request.id)
         }
     }
     
