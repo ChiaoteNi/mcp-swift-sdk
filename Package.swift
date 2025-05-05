@@ -22,12 +22,12 @@ let package = Package(
             name: "MCPCore"
         ),
         .target(
-            name: "MCPNetworking",
+            name: "MCPUtilities",
             dependencies: ["MCPCore"]
         ),
         .target(
-            name: "MCPUtilities",
-            dependencies: ["MCPCore"]
+            name: "MCPNetworking",
+            dependencies: ["MCPCore", "MCPUtilities"]
         ),
         .target(
             name: "MCPClient",
